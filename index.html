@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="語音備忘錄">
+<link rel="manifest" href="./manifest.json">
+<title>辦公語音備忘錄</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f3f4f6;color:#111827}
+body{padding-bottom:env(safe-area-inset-bottom)}
+.app{width:min(900px,94%);margin:auto;padding:20px 0 40px}
+header{padding:10px 2px 18px}h1{font-size:27px;margin:0 0 6px}header p{margin:0;color:#6b7280;font-size:14px}
+.card{background:#fff;border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:0 4px 20px rgba(0,0,0,.06)}
+.record{width:100%;border:0;border-radius:16px;padding:19px;background:#dc2626;color:#fff;font-size:20px;font-weight:800}
+.record.active{background:#111827}.status{text-align:center;color:#6b7280;font-size:13px;margin-top:10px}.status.live{color:#dc2626;font-weight:700}
+.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+button{font:inherit;cursor:pointer}.btn{border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:13px;font-weight:700}.primary{background:#2563eb;color:#fff;border-color:#2563eb}.success{background:#16a34a;color:#fff;border-color:#16a34a}.dark{background:#111827;color:#fff;border-color:#111827}.danger{color:#dc2626}
+textarea{width:100%;min-height:300px;border:1px solid #e5e7eb;border-radius:13px;padding:15px;font-size:16px;line-height:1.8;resize:vertical;outline:0}textarea:focus{border-color:#2563eb}
+.title{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}.title h2{font-size:17px;margin:0}.count{font-size:12px;color:#9ca3af}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.box{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:14px}.box h3{font-size:14px;margin:0 0 9px}.result{white-space:pre-wrap;line-height:1.7;color:#374151;font-size:14px}.full{grid-column:1/-1}
+.todo{display:flex;gap:8px;margin:7px 0;align-items:flex-start}.todo input{margin-top:4px}
+.hint{font-size:12px;color:#6b7280;line-height:1.7;margin:10px 2px 0}.install{display:none}
+@media(max-width:600px){.app{width:92%;padding-top:12px}h1{font-size:24px}.grid{grid-template-columns:1fr}.full{grid-column:auto}.card{padding:15px}.record{font-size:18px}.actions{grid-template-columns:1fr 1fr}textarea{min-height:260px}.install{display:block;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:12px;padding:11px;font-size:13px;margin-bottom:14px}}
+</style>
+</head>
+<body>
+<main class="app">
+<header>
+<h1>🎙️ 辦公語音備忘錄</h1>
+<p>語音 → 逐字稿 → 自動整理 → 待辦 → LINE</p>
+</header>
+
+<div class="install" id="installHint">📱 若已安裝到主畫面，可像 App 一樣直接開啟。</div>
+
+<section class="card">
+<button id="recordBtn" class="record">🔴 開始錄音</button>
+<div id="status" class="status">尚未開始錄音</div>
+</section>
+
+<section class="card">
+<div class="actions">
+<button id="analyzeBtn" class="btn primary">🧠 自動整理</button>
+<button id="copyBtn" class="btn success">📋 複製逐字稿</button>
+<button id="copyLineBtn" class="btn dark">📱 複製 LINE</button>
+<button id="clearBtn" class="btn danger">🗑️ 清除</button>
+</div>
+</section>
+
+<section class="card">
+<div class="title"><h2>📝 即時逐字稿</h2><span id="count" class="count">0 字</span></div>
+<textarea id="transcript" placeholder="按下開始錄音，然後直接說話……"></textarea>
+<p class="hint">內容會自動儲存在這台裝置的瀏覽器中，不會送到你的伺服器。</p>
+</section>
+
+<section class="card">
+<div class="title"><h2>🧠 自動整理</h2></div>
+<div class="grid">
+<div class="box full"><h3>📋 會議／工作紀錄</h3><div id="meeting" class="result">尚未分析</div></div>
+<div class="box"><h3>✅ 待辦事項</h3><div id="todos" class="result">尚未分析</div></div>
+<div class="box"><h3>📅 日期</h3><div id="dates" class="result">尚未分析</div></div>
+<div class="box"><h3>👤 人名</h3><div id="people" class="result">尚未分析</div></div>
+<div class="box"><h3>💰 金額</h3><div id="money" class="result">尚未分析</div></div>
+</div>
+</section>
+
+<section class="card">
+<div class="title"><h2>📱 LINE 訊息</h2></div>
+<textarea id="line" placeholder="整理後的 LINE 訊息會出現在這裡……"></textarea>
+<button id="copyLine2" class="btn success" style="width:100%;margin-top:9px">📱 複製 LINE 訊息</button>
+</section>
+</main>
+
+<script>
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const $=id=>document.getElementById(id);
+const recBtn=$("recordBtn"),status=$("status"),ta=$("transcript"),count=$("count");
+let recognition=null,recording=false,finalText="";
+
+function updateCount(){count.textContent=ta.value.trim().length+" 字"; localStorage.setItem("officeVoiceMemo",ta.value)}
+function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function splitParts(text){
+  let s=text.replace(/\s+/g," ").trim();
+  if(!s)return [];
+  s=s.replace(/\s*(然後|另外|接下來|再來|最後|所以|因此|目前|關於|至於|第一|第二|第三)/g,"\n$1");
+  return s.split(/\n+/).map(x=>x.trim()).filter(Boolean).flatMap(x=>x.length<=100?[x]:x.match(/.{1,80}/g)||[]);
+}
+function detectDates(t){
+  const ps=[/\d{4}[年\/-]\d{1,2}[月\/-]\d{1,2}日?/g,/\d{1,2}月\d{1,2}日/g,/\d{1,2}\/\d{1,2}/g,/下週[一二三四五六日天]?/g,/下星期[一二三四五六日天]?/g,/這週[一二三四五六日天]?/g,/明天/g,/後天/g,/今天/g,/月底前/g,/月底/g,/下個月/g];
+  return [...new Set(ps.flatMap(p=>t.match(p)||[]))];
+}
+function detectMoney(t){
+  const ps=[/(?:NT\$|NTD|\$)\s?[\d,]+(?:\.\d+)?/gi,/[\d,]+(?:\.\d+)?\s*(?:元|塊|萬|萬元)/g,/(?:新台幣|台幣)\s?[\d,]+(?:\.\d+)?/g];
+  return [...new Set(ps.flatMap(p=>t.match(p)||[]))];
+}
+function detectPeople(t){
+  const r=/([\u4e00-\u9fff]{2,4})(?:先生|小姐|經理|主任|課長|老闆|老師|總經理|副理|總監|主管)/g,a=[];let m;
+  while((m=r.exec(t)))if(!a.includes(m[1]))a.push(m[1]); return a;
+}
+function detectTodos(t){
+  const keys=["要","需要","記得","請","安排","確認","聯絡","聯繫","通知","提供","寄","傳","修改","製作","準備","完成","處理","追蹤","回覆","報價","詢問","預約"];
+  const a=[];
+  t.split(/[。！？!?]/).map(x=>x.trim()).filter(Boolean).forEach(s=>{
+    if(keys.some(k=>s.includes(k))&&s.length>=4&&s.length<=120&&!a.includes(s))a.push(s)
+  }); return a.slice(0,20);
+}
+function analyze(){
+  const t=ta.value.trim(); if(!t){alert("請先錄音或輸入文字");return}
+  const parts=splitParts(t),dates=detectDates(t),people=detectPeople(t),money=detectMoney(t),todos=detectTodos(t);
+  const today=new Date().toLocaleDateString("zh-TW");
+  $("meeting").textContent="【工作紀錄】\n日期："+today+"\n\n【內容】\n"+parts.map((x,i)=>(i+1)+". "+x).join("\n");
+  $("todos").innerHTML=todos.length?todos.map((x,i)=>`<div class="todo"><input type="checkbox"><span>${escapeHtml(x)}</span></div>`):"尚未發現待辦事項";
+  $("dates").textContent=dates.length?dates.join("\n"):"尚未發現日期";
+  $("people").textContent=people.length?people.join("\n"):"尚未發現人名";
+  $("money").textContent=money.length?money.join("\n"):"尚未發現金額";
+  let line="📋【工作紀錄】\n\n";
+  if(parts.length)line+="📌【內容】\n"+parts.map(x=>"・"+x).join("\n")+"\n\n";
+  if(todos.length)line+="✅【待辦事項】\n"+todos.map(x=>"☐ "+x).join("\n")+"\n\n";
+  if(dates.length)line+="📅【日期】\n"+dates.join("、")+"\n\n";
+  if(people.length)line+="👤【相關人員】\n"+people.join("、")+"\n\n";
+  if(money.length)line+="💰【金額】\n"+money.join("、");
+  $("line").value=line.trim();
+}
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t)}catch(e){const x=document.createElement("textarea");x.value=t;document.body.appendChild(x);x.select();document.execCommand("copy");x.remove()}
+}
+if(SR){
+  recognition=new SR(); recognition.lang="zh-TW"; recognition.continuous=true; recognition.interimResults=true;
+  recognition.onstart=()=>{recording=true;recBtn.textContent="⏹️ 停止錄音";recBtn.classList.add("active");status.textContent="🔴 正在聆聽……";status.classList.add("live")};
+  recognition.onresult=e=>{
+    let interim="";
+    for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)finalText+=r[0].transcript;else interim+=r[0].transcript}
+    ta.value=finalText+interim;updateCount();ta.scrollTop=ta.scrollHeight;
+  };
+  recognition.onend=()=>{if(recording)try{recognition.start()}catch(e){}};
+  recognition.onerror=e=>{if(e.error==="not-allowed")status.textContent="❌ 麥克風權限被拒絕，請允許瀏覽器使用麥克風。";else status.textContent="⚠️ 語音辨識："+e.error};
+  recBtn.onclick=()=>{if(!recording){finalText=ta.value;try{recognition.start()}catch(e){}}else{recording=false;recognition.stop();recBtn.textContent="🔴 開始錄音";recBtn.classList.remove("active");status.textContent="錄音已停止";status.classList.remove("live")}};
+}else{recBtn.disabled=true;recBtn.textContent="❌ 瀏覽器不支援語音辨識";status.textContent="請使用新版 Chrome 或 Edge。"}
+$("analyzeBtn").onclick=analyze;
+$("copyBtn").onclick=()=>{if(ta.value.trim())copyText(ta.value);else alert("沒有文字可以複製")};
+async function copyLine(){if(!$("line").value.trim())analyze();await copyText($("line").value);$("copyLineBtn").textContent="✅ 已複製";setTimeout(()=>$("copyLineBtn").textContent="📱 複製 LINE",1200)}
+$("copyLineBtn").onclick=copyLine;$("copyLine2").onclick=copyLine;
+$("clearBtn").onclick=()=>{if(confirm("確定清除目前紀錄？")){ta.value="";finalText="";$("line").value="";["meeting","todos","dates","people","money"].forEach(id=>$(id).textContent="尚未分析");localStorage.removeItem("officeVoiceMemo");updateCount()}};
+ta.oninput=()=>{finalText=ta.value;updateCount()};
+const saved=localStorage.getItem("officeVoiceMemo");if(saved){ta.value=saved;finalText=saved;updateCount()}
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(console.error));
+</script>
+</body>
+</html>
